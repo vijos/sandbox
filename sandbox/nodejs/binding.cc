@@ -1,9 +1,12 @@
 #include <napi.h>
+#include "sandbox/sandbox.h"
 
 namespace sandbox {
 
-Napi::String Hello(const Napi::CallbackInfo &info) {
-    return Napi::String::New(info.Env(), "world");
+void Hello(const Napi::CallbackInfo &info) {
+    Sandbox::Options options;
+    Sandbox sandbox(options);
+    sandbox.init();
 }
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
