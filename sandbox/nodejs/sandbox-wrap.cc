@@ -10,9 +10,9 @@ Sandbox::Options get_sandbox_options(const Napi::CallbackInfo &info) {
         return Sandbox::Options();
     }
     if (!info[0].IsObject()) {
-        Napi::TypeError::New(env, "invalid argument")
-            .ThrowAsJavaScriptException();
-        return Sandbox::Options();
+        NAPI_THROW(
+            Napi::TypeError::New(env, "invalid argument"),
+            Sandbox::Options());
     }
     Napi::Object js_options = info[0].ToObject();
     Sandbox::Options options;
@@ -46,7 +46,7 @@ SandboxWrap::SandboxWrap(const Napi::CallbackInfo &info)
       Sandbox(get_sandbox_options(info)) {
     Napi::Env env = info.Env();
     if (!Sandbox::init()) {
-        Napi::Error::New(env, "init failed").ThrowAsJavaScriptException();
+        NAPI_THROW_VOID(Napi::Error::New(env, "init failed"));
     }
 }
 
