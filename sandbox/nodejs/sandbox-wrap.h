@@ -7,11 +7,11 @@
 namespace sandbox {
 namespace nodejs {
 
-class SandboxWrap : public Napi::ObjectWrap<SandboxWrap> {
+class SandboxWrap : public Napi::ObjectWrap<SandboxWrap>, private Sandbox {
 public:
     static void init(Napi::Env env, Napi::Object exports);
 
-    explicit SandboxWrap(const Napi::CallbackInfo &info) : ObjectWrap(info) {}
+    explicit SandboxWrap(const Napi::CallbackInfo &info);
 
     void execute(const Napi::CallbackInfo &info);
 };
