@@ -50,10 +50,38 @@ SandboxWrap::SandboxWrap(const Napi::CallbackInfo &info)
     }
 }
 
-void SandboxWrap::execute(const Napi::CallbackInfo &info) {
-    // TODO(iceboy): async
-    ExecuteOptions options;
-    Sandbox::execute(options);
+class SandboxWrap::ExecuteWorker : public Napi::AsyncWorker {
+public:
+    explicit ExecuteWorker(
+        SandboxWrap &wrap,
+        const Napi::CallbackInfo &info,
+        Napi::Promise::Deferred deferred)
+        : AsyncWorker(info.Env()), wrap_(wrap), deferred_(deferred) {
+        // TODO(iceboy): Populate options_ from info .
+    }
+
+    void Execute() override {
+        wrap_.Sandbox::execute(options_);
+    }
+
+    void OnOK() override {
+        deferred_.Resolve(Env().Undefined());
+    }
+
+    void OnError(const Napi::Error &e) override {
+        deferred_.Reject(e.Value());
+    }
+
+private:
+    SandboxWrap &wrap_;
+    Napi::Promise::Deferred deferred_;
+    Sandbox::ExecuteOptions options_;
+};
+
+Napi::Value SandboxWrap::execute(const Napi::CallbackInfo &info) {
+    Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(info.Env());
+    (new ExecuteWorker(*this, info, deferred))->Queue();
+    return deferred.Promise();
 }
 
 }  // namespace nodejs

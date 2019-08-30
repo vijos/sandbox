@@ -13,7 +13,10 @@ public:
 
     explicit SandboxWrap(const Napi::CallbackInfo &info);
 
-    void execute(const Napi::CallbackInfo &info);
+    Napi::Value execute(const Napi::CallbackInfo &info);
+
+private:
+    class ExecuteWorker;
 };
 
 }  // namespace nodejs
