@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <fcntl.h>
 #include <sched.h>
 #include <stdio.h>
 #include <sys/mount.h>
@@ -10,6 +11,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include "sandbox/util.h"
+
+extern "C" int pivot_root(const char *new_root, const char *put_old);
 
 namespace sandbox {
 
@@ -35,6 +38,12 @@ Sandbox::~Sandbox() {
 
 bool Sandbox::init() {
     return init_dirs() && init_sockets() && init_guest();
+}
+
+void Sandbox::execute(const ExecuteOptions &options) {
+    // TODO
+    waitpid(guest_pid_, nullptr, 0);
+    guest_pid_ = 0;
 }
 
 bool Sandbox::init_dirs() {
@@ -68,7 +77,7 @@ bool Sandbox::init_guest() {
     // on the close semantics, as there can be open sockets from other sandbox
     // instances.
     if (pid == 0) {
-        do_guest();
+        guest_entry();
         exit(1);
         return false;
     }
@@ -76,7 +85,7 @@ bool Sandbox::init_guest() {
     return true;
 }
 
-void Sandbox::do_guest() {
+void Sandbox::guest_entry() {
     uid_t host_euid = geteuid();
     gid_t host_egid = getegid();
     if (unshare(CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC |
@@ -117,7 +126,7 @@ void Sandbox::do_guest() {
         return;
     }
     if (pid == 0) {
-        do_guest_init();
+        guest_init();
         return;
     }
     if (waitpid(pid, nullptr, 0) == -1) {
@@ -127,8 +136,65 @@ void Sandbox::do_guest() {
     exit(0);
 }
 
-void Sandbox::do_guest_init() {
-    // TODO
+void Sandbox::guest_init() {
+    // TODO(iceboy): Error handling.
+    mount("root", root_dir_.c_str(), "tmpfs", MS_NOSUID, nullptr);
+    chdir(root_dir_.c_str());
+    mkdir("proc", 0755);
+    mount("proc", "proc", "proc", MS_NOSUID, nullptr);
+    mkdir("dev", 0755);
+    bind_node("/dev/null", "dev/null");
+    bind_node("/dev/urandom", "dev/urandom");
+    mkdir("tmp", 0755);
+    mount("tmp", "tmp", "tmpfs", MS_NOSUID, "size=16m,nr_inodes=4k");
+    bind_or_link("/bin", "bin");
+    mkdir("etc", 0755);
+    bind_or_link("/etc/alternatives", "etc/alternatives");
+    bind_or_link("/lib", "lib");
+    bind_or_link("/lib64", "lib64");
+    mkdir("usr", 0755);
+    bind_or_link("/usr/bin", "usr/bin");
+    bind_or_link("/usr/include", "usr/include");
+    bind_or_link("/usr/lib", "usr/lib");
+    bind_or_link("/usr/lib64", "usr/lib64");
+    bind_or_link("/usr/libexec", "usr/libexec");
+    bind_or_link("/usr/share", "usr/share");
+    mkdir("var", 0755);
+    mkdir("var/lib", 0755);
+    bind_or_link("/var/lib/ghc", "var/lib/ghc");
+    // TODO(iceboy): bind user directories.
+    std::ostringstream passwd;
+    passwd << options_.guest_username << ":x:" << options_.guest_uid << ":"
+           << options_.guest_gid << ":" << options_.guest_username
+           << ":/:/bin/bash\n";
+    write_file("etc/passwd", passwd.str());
+    mkdir("old_root", 0755);
+    pivot_root(".", "old_root");
+    umount2("old_root", MNT_DETACH);
+    rmdir("old_root");
+    mount("/", "/", "", MS_BIND | MS_REMOUNT | MS_RDONLY | MS_NOSUID, nullptr);
+    // TODO(iceboy): read socket.
+    guest_backdoor();
+}
+
+void Sandbox::guest_backdoor() {
+    pid_t pid = fork();
+    if (pid == -1) {
+        perror("fork");
+        return;
+    }
+    if (pid == 0) {
+        fcntl(0, F_SETFD, fcntl(0, F_GETFD) & ~FD_CLOEXEC);
+        fcntl(1, F_SETFD, fcntl(1, F_GETFD) & ~FD_CLOEXEC);
+        fcntl(2, F_SETFD, fcntl(2, F_GETFD) & ~FD_CLOEXEC);
+        execl("/bin/bash", "backdoor", nullptr);
+        return;
+    }
+    if (waitpid(pid, nullptr, 0) == -1) {
+        perror("waitpid");
+        return;
+    }
+    // TODO(iceboy): return value.
 }
 
 }  // namespace sandbox

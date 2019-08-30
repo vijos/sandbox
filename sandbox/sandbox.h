@@ -14,6 +14,7 @@ public:
         uid_t guest_uid = 1000;
         gid_t guest_gid = 1000;
         std::string guest_hostname = "sandbox";
+        std::string guest_username = "user";
     };
 
     explicit Sandbox(const Options &options);
@@ -34,8 +35,9 @@ private:
     bool init_dirs();
     bool init_sockets();
     bool init_guest();
-    void do_guest();
-    void do_guest_init();
+    void guest_entry();
+    void guest_init();
+    void guest_backdoor();
 
     Options options_;
     std::string root_dir_;

@@ -51,7 +51,9 @@ SandboxWrap::SandboxWrap(const Napi::CallbackInfo &info)
 }
 
 void SandboxWrap::execute(const Napi::CallbackInfo &info) {
-    printf("SandboxWrap::execute()\n");
+    // TODO(iceboy): async
+    ExecuteOptions options;
+    Sandbox::execute(options);
 }
 
 }  // namespace nodejs
