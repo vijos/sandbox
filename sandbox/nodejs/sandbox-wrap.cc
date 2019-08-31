@@ -36,7 +36,7 @@ Sandbox::Options get_sandbox_options(const Napi::CallbackInfo &info) {
 
 void SandboxWrap::init(Napi::Env env, Napi::Object exports) {
     Napi::Function func = DefineClass(env, "Sandbox", {
-        InstanceMethod("execute", &SandboxWrap::execute),
+        InstanceMethod("shell", &SandboxWrap::shell),
     });
     exports.Set("Sandbox", func);
 }
@@ -50,21 +50,24 @@ SandboxWrap::SandboxWrap(const Napi::CallbackInfo &info)
     }
 }
 
-class SandboxWrap::ExecuteWorker : public Napi::AsyncWorker {
+class SandboxWrap::ShellWorker : public Napi::AsyncWorker {
 public:
-    explicit ExecuteWorker(
+    explicit ShellWorker(
         SandboxWrap &wrap,
         const Napi::CallbackInfo &info,
         Napi::Promise::Deferred deferred)
         : AsyncWorker(info.Env()), wrap_(wrap), deferred_(deferred) {
-        // TODO(iceboy): Populate options_ from info .
+        // TODO(iceboy): Populate request_ from info .
     }
 
     void Execute() override {
-        wrap_.Sandbox::execute(options_);
+        // TODO(iceboy): Error handling.
+        wrap_.Sandbox::shell(request_, response_);
     }
 
     void OnOK() override {
+        // TODO(iceboy): Populate value from response_.
+        printf("response_.wstatus = %d\n", response_.wstatus);
         deferred_.Resolve(Env().Undefined());
     }
 
@@ -75,12 +78,13 @@ public:
 private:
     SandboxWrap &wrap_;
     Napi::Promise::Deferred deferred_;
-    Sandbox::ExecuteOptions options_;
+    ipc::ShellRequest request_;
+    ipc::ShellResponse response_;
 };
 
-Napi::Value SandboxWrap::execute(const Napi::CallbackInfo &info) {
+Napi::Value SandboxWrap::shell(const Napi::CallbackInfo &info) {
     Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(info.Env());
-    (new ExecuteWorker(*this, info, deferred))->Queue();
+    (new ShellWorker(*this, info, deferred))->Queue();
     return deferred.Promise();
 }
 

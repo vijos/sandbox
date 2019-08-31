@@ -1,9 +1,12 @@
 #ifndef _SANDBOX_SANDBOX_H
 #define _SANDBOX_SANDBOX_H
 
+#include <iostream>
 #include <string>
 #include <vector>
 #include <unistd.h>
+#include "sandbox/ipc.h"
+#include "sandbox/util.h"
 
 namespace sandbox {
 
@@ -24,12 +27,8 @@ public:
     Sandbox &operator=(const Sandbox &) = delete;
 
     bool init();
-
-    struct ExecuteOptions {
-        std::string file;
-        std::vector<std::string> args;
-    };
-    void execute(const ExecuteOptions &options);
+    bool shell(
+        const ipc::ShellRequest &request, ipc::ShellResponse &response);
 
 private:
     bool init_dirs();
@@ -37,13 +36,16 @@ private:
     bool init_guest();
     void guest_entry();
     void guest_init();
-    void guest_backdoor();
+    void guest_shell(
+        const ipc::ShellRequest &request, ipc::ShellResponse &response);
 
     Options options_;
     std::string root_dir_;
     int host_socket_ = -1;
     int guest_socket_ = -1;
     pid_t guest_pid_ = 0;
+    FdStreamBuf host_streambuf_;
+    std::iostream host_stream_;
 };
 
 }  // namespace sandbox

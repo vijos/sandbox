@@ -1,6 +1,5 @@
 #include "sandbox/sandbox.h"
 
-#include <iostream>
 #include <sstream>
 #include <fcntl.h>
 #include <sched.h>
@@ -10,14 +9,15 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include "sandbox/util.h"
+#include <cereal/archives/binary.hpp>
+#include "sandbox/ipc.h"
 
 extern "C" int pivot_root(const char *new_root, const char *put_old);
 
 namespace sandbox {
 
 Sandbox::Sandbox(const Options &options)
-    : options_(options) {}
+    : options_(options), host_stream_(&host_streambuf_) {}
 
 Sandbox::~Sandbox() {
     // TODO(iceboy): when does nodejs destruct objects?
@@ -40,10 +40,22 @@ bool Sandbox::init() {
     return init_dirs() && init_sockets() && init_guest();
 }
 
-void Sandbox::execute(const ExecuteOptions &options) {
-    // TODO
-    waitpid(guest_pid_, nullptr, 0);
-    guest_pid_ = 0;
+bool Sandbox::shell(
+    const ipc::ShellRequest &request, ipc::ShellResponse &response) {
+    try {
+        cereal::BinaryOutputArchive output(host_stream_);
+        output(ipc::Command::shell);
+        output(request);
+    } catch (const cereal::Exception &) {
+        return false;
+    }
+    host_stream_.flush();
+    try {
+        (cereal::BinaryInputArchive(host_stream_))(response);
+    } catch (const cereal::Exception &) {
+        return false;
+    }
+    return true;
 }
 
 bool Sandbox::init_dirs() {
@@ -64,6 +76,7 @@ bool Sandbox::init_sockets() {
     }
     host_socket_ = fds[0];
     guest_socket_ = fds[1];
+    host_streambuf_.fd(host_socket_);
     return true;
 }
 
@@ -173,11 +186,31 @@ void Sandbox::guest_init() {
     umount2("old_root", MNT_DETACH);
     rmdir("old_root");
     mount("/", "/", "", MS_BIND | MS_REMOUNT | MS_RDONLY | MS_NOSUID, nullptr);
-    // TODO(iceboy): read socket.
-    guest_backdoor();
+
+    FdStreamBuf streambuf(guest_socket_);
+    std::iostream stream(&streambuf);
+    cereal::BinaryInputArchive input(stream);
+    cereal::BinaryOutputArchive output(stream);
+    ipc::Command command;
+    while (stream) {
+        try {
+            input(command);
+            if (command == ipc::Command::shell) {
+                ipc::ShellRequest request;
+                input(request);
+                ipc::ShellResponse response;
+                guest_shell(request, response);
+                output(response);
+            }
+        } catch (const cereal::Exception &) {
+            break;
+        }
+        stream.flush();
+    }
 }
 
-void Sandbox::guest_backdoor() {
+void Sandbox::guest_shell(
+    const ipc::ShellRequest &request, ipc::ShellResponse &response) {
     pid_t pid = fork();
     if (pid == -1) {
         perror("fork");
@@ -190,11 +223,10 @@ void Sandbox::guest_backdoor() {
         execl("/bin/bash", "backdoor", nullptr);
         return;
     }
-    if (waitpid(pid, nullptr, 0) == -1) {
+    if (waitpid(pid, &response.wstatus, 0) == -1) {
         perror("waitpid");
         return;
     }
-    // TODO(iceboy): return value.
 }
 
 }  // namespace sandbox

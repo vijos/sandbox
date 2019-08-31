@@ -10,10 +10,12 @@
             ],
             "include_dirs": [
                 "<!@(node -p \"require('node-addon-api').include\")",
-                "."
+                ".",
+                "third_party/cereal/include"
             ],
             "dependencies": ["<!(node -p \"require('node-addon-api').gyp\")"],
-            "defines": ["NAPI_DISABLE_CPP_EXCEPTIONS"]
+            "defines": ["NAPI_DISABLE_CPP_EXCEPTIONS"],
+            "cflags_cc!": ["-fno-exceptions", "-fno-rtti"]
         }
     ]
 }

@@ -57,4 +57,27 @@ bool bind_or_link(const std::string &from, const std::string &to) {
     return true;
 }
 
+int FdStreamBuf::underflow() {
+    ssize_t ret = read(fd_, gbuf_.data(), gbuf_.size());
+    if (ret <= 0) {
+        return EOF;
+    }
+    setg(gbuf_.data(), gbuf_.data(), gbuf_.data() + ret);
+    return gbuf_.front();
+}
+
+int FdStreamBuf::overflow(int c) {
+    int ret = write(fd_, pbase(), pptr() - pbase());
+    preset();
+    if (c != EOF) {
+        *pbase() = static_cast<char>(c);
+        pbump(1);
+    }
+    return ret >= 0 ? ret : EOF;
+}
+
+int FdStreamBuf::sync() {
+    return overflow() == EOF ? -1 : 0;
+}
+
 }  // namespace sandbox
