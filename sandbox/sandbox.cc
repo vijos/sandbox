@@ -31,13 +31,10 @@ Sandbox::~Sandbox() {
     if (host_socket_ != -1) {
         close(host_socket_);
     }
-    if (!root_dir_.empty()) {
-        rmdir(root_dir_.c_str());
-    }
 }
 
 bool Sandbox::init() {
-    return init_dirs() && init_sockets() && init_guest();
+    return init_sockets() && init_guest();
 }
 
 bool Sandbox::shell(
@@ -53,16 +50,6 @@ bool Sandbox::shell(
     } catch (const cereal::Exception &) {
         return false;
     }
-}
-
-bool Sandbox::init_dirs() {
-    std::string root_dir = options_.temp_dir + "/sandbox.XXXXXX";
-    if (!mkdtemp(&root_dir[0])) {
-        perror("mkdtemp");
-        return false;
-    }
-    root_dir_ = root_dir;
-    return true;
 }
 
 bool Sandbox::init_sockets() {
@@ -147,8 +134,8 @@ void Sandbox::guest_entry() {
 
 void Sandbox::guest_init() {
     // TODO(iceboy): Error handling.
-    mount("root", root_dir_.c_str(), "tmpfs", MS_NOSUID, nullptr);
-    chdir(root_dir_.c_str());
+    mount("root", options_.temp_dir.c_str(), "tmpfs", MS_NOSUID, nullptr);
+    chdir(options_.temp_dir.c_str());
     mkdir("proc", 0755);
     mount("proc", "proc", "proc", MS_NOSUID, nullptr);
     mkdir("dev", 0755);

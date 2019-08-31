@@ -38,7 +38,6 @@ public:
         const ipc::ShellRequest &request, ipc::ShellResponse &response);
 
 private:
-    bool init_dirs();
     bool init_sockets();
     bool init_guest();
     void guest_entry();
