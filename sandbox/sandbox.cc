@@ -104,7 +104,7 @@ void Sandbox::guest_entry() {
         return;
     }
     std::ostringstream uid_map;
-    uid_map << options_.guest_uid << ' ' << host_euid << " 1";
+    uid_map << options_.uid << ' ' << host_euid << " 1";
     if (!write_file("/proc/self/uid_map", uid_map.str())) {
         std::cerr << "write uid_map failed" << std::endl;
         return;
@@ -112,21 +112,20 @@ void Sandbox::guest_entry() {
     // setgroups is not available on some systems, ignoring errors.
     write_file("/proc/self/setgroups", "deny");
     std::ostringstream gid_map;
-    gid_map << options_.guest_gid << ' ' << host_egid << " 1";
+    gid_map << options_.gid << ' ' << host_egid << " 1";
     if (!write_file("/proc/self/gid_map", gid_map.str())) {
         std::cerr << "write gid_map failed" << std::endl;
         return;
     }
-    if (setresuid(options_.guest_uid, options_.guest_uid, options_.guest_uid)) {
+    if (setresuid(options_.uid, options_.uid, options_.uid)) {
         perror("setresuid");
         return;
     }
-    if (setresgid(options_.guest_gid, options_.guest_gid, options_.guest_gid)) {
+    if (setresgid(options_.gid, options_.gid, options_.gid)) {
         perror("setresgid");
         return;
     }
-    if (sethostname(options_.guest_hostname.data(),
-                    options_.guest_hostname.size())) {
+    if (sethostname(options_.hostname.data(), options_.hostname.size())) {
         perror("sethostname");
         return;
     }
@@ -172,11 +171,12 @@ void Sandbox::guest_init() {
     mkdir("var", 0755);
     mkdir("var/lib", 0755);
     bind_or_link("/var/lib/ghc", "var/lib/ghc");
-    // TODO(iceboy): bind user directories.
+    for (const Mount &mount : options_.mounts) {
+        bind_dir(mount.from, mount.to, mount.readonly);
+    }
     std::ostringstream passwd;
-    passwd << options_.guest_username << ":x:" << options_.guest_uid << ":"
-           << options_.guest_gid << ":" << options_.guest_username
-           << ":/:/bin/bash\n";
+    passwd << options_.username << ":x:" << options_.uid << ":" << options_.gid
+           << ":" << options_.username << ":/:/bin/bash\n";
     write_file("etc/passwd", passwd.str());
     mkdir("old_root", 0755);
     pivot_root(".", "old_root");
@@ -188,9 +188,9 @@ void Sandbox::guest_init() {
     std::iostream stream(&streambuf);
     cereal::BinaryInputArchive input(stream);
     cereal::BinaryOutputArchive output(stream);
-    ipc::Command command;
     while (stream) {
         try {
+            ipc::Command command;
             input(command);
             if (command == ipc::Command::shell) {
                 ipc::ShellRequest request;

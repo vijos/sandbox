@@ -9,6 +9,7 @@ namespace sandbox {
 
 bool write_file(const std::string &filename, const std::string &content);
 bool bind_node(const std::string &from, const std::string &to);
+bool bind_dir(const std::string &from, const std::string &to, bool readonly);
 bool bind_or_link(const std::string &from, const std::string &to);
 
 class FdStreamBuf : public std::streambuf {

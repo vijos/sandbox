@@ -10,14 +10,21 @@
 
 namespace sandbox {
 
+struct Mount {
+    std::string from;
+    std::string to;
+    bool readonly = true;
+};
+
 class Sandbox {
 public:
     struct Options {
         std::string temp_dir = "/tmp";
-        uid_t guest_uid = 1000;
-        gid_t guest_gid = 1000;
-        std::string guest_hostname = "sandbox";
-        std::string guest_username = "user";
+        uid_t uid = 1000;
+        gid_t gid = 1000;
+        std::vector<Mount> mounts;
+        std::string hostname = "host";
+        std::string username = "user";
     };
 
     explicit Sandbox(const Options &options);

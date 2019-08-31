@@ -18,10 +18,27 @@ bool write_file(const std::string &filename, const std::string &content) {
 }
 
 bool bind_node(const std::string &from, const std::string &to) {
+    // TODO(iceboy): Recursively create parent directories.
     if (mknod(to.c_str(), 0600, 0)) {
         return false;
     }
     if (mount(from.c_str(), to.c_str(), "", MS_BIND | MS_NOSUID, nullptr)) {
+        return false;
+    }
+    return true;
+}
+
+bool bind_dir(const std::string &from, const std::string &to, bool readonly) {
+    // TODO(iceboy): Recursively create directories.
+    if (mkdir(to.c_str(), 0755)) {
+        return false;
+    }
+    if (mount(from.c_str(), to.c_str(), "", MS_BIND | MS_NOSUID, nullptr)) {
+        return false;
+    }
+    if (readonly &&
+        mount(from.c_str(), to.c_str(), "",
+              MS_BIND | MS_REMOUNT | MS_RDONLY | MS_NOSUID, nullptr)) {
         return false;
     }
     return true;
@@ -39,10 +56,12 @@ bool bind_or_link(const std::string &from, const std::string &to) {
             return false;
         }
         buffer[ret] = '\0';
+        // TODO(iceboy): Recursively create parent directories.
         if (symlink(buffer.data(), to.c_str())) {
             return false;
         }
     } else {
+        // TODO(iceboy): Recursively create directories.
         if (mkdir(to.c_str(), 0755)) {
             return false;
         }

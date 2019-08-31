@@ -19,15 +19,30 @@ Sandbox::Options get_sandbox_options(const Napi::CallbackInfo &info) {
     if (js_options.Has("tempDir")) {
         options.temp_dir = js_options.Get("tempDir").ToString().Utf8Value();
     }
-    if (js_options.Has("guestUid")) {
-        options.guest_uid = js_options.Get("guestUid").ToNumber().Uint32Value();
+    if (js_options.Has("uid")) {
+        options.uid = js_options.Get("uid").ToNumber().Uint32Value();
     }
-    if (js_options.Has("guestGid")) {
-        options.guest_gid = js_options.Get("guestGid").ToNumber().Uint32Value();
+    if (js_options.Has("gid")) {
+        options.gid = js_options.Get("gid").ToNumber().Uint32Value();
     }
-    if (js_options.Has("guestHostname")) {
-        options.guest_hostname =
-            js_options.Get("guestHostname").ToString().Utf8Value();
+    if (js_options.Has("mounts")) {
+        Napi::Array js_mounts = js_options.Get("mounts").As<Napi::Array>();
+        for (uint32_t i = 0; i < js_mounts.Length(); ++i) {
+            Napi::Object js_mount = js_mounts.Get(i).ToObject();
+            options.mounts.emplace_back();
+            auto &mount = options.mounts.back();
+            mount.from = js_mount.Get("from").ToString();
+            mount.to = js_mount.Get("to").ToString();
+            if (js_mount.Has("readonly")) {
+                mount.readonly = js_mount.Get("readonly").ToBoolean().Value();
+            }
+        }
+    }
+    if (js_options.Has("hostname")) {
+        options.hostname = js_options.Get("hostname").ToString().Utf8Value();
+    }
+    if (js_options.Has("username")) {
+        options.username = js_options.Get("username").ToString().Utf8Value();
     }
     return options;
 }
