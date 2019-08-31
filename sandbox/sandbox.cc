@@ -220,7 +220,7 @@ void Sandbox::guest_shell(
         fcntl(0, F_SETFD, fcntl(0, F_GETFD) & ~FD_CLOEXEC);
         fcntl(1, F_SETFD, fcntl(1, F_GETFD) & ~FD_CLOEXEC);
         fcntl(2, F_SETFD, fcntl(2, F_GETFD) & ~FD_CLOEXEC);
-        execl("/bin/bash", "backdoor", nullptr);
+        execl("/bin/bash", "shell", nullptr);
         return;
     }
     if (waitpid(pid, &response.wstatus, 0) == -1) {

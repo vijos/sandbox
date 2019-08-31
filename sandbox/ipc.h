@@ -1,5 +1,5 @@
-#ifndef _SANDBOX_TYPES_H
-#define _SANDBOX_TYPES_H
+#ifndef _SANDBOX_IPC_H
+#define _SANDBOX_IPC_H
 
 namespace sandbox {
 namespace ipc {
@@ -22,4 +22,4 @@ struct ShellResponse {
 }  // namespace ipc
 }  // namespace sandbox
 
-#endif  // _SANDBOX_TYPES_H
+#endif  // _SANDBOX_IPC_H
