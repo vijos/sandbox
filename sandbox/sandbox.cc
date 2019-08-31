@@ -46,16 +46,13 @@ bool Sandbox::shell(
         cereal::BinaryOutputArchive output(host_stream_);
         output(ipc::Command::shell);
         output(request);
+        host_stream_.flush();
+        cereal::BinaryInputArchive input(host_stream_);
+        input(response);
+        return true;
     } catch (const cereal::Exception &) {
         return false;
     }
-    host_stream_.flush();
-    try {
-        (cereal::BinaryInputArchive(host_stream_))(response);
-    } catch (const cereal::Exception &) {
-        return false;
-    }
-    return true;
 }
 
 bool Sandbox::init_dirs() {

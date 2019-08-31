@@ -13,9 +13,9 @@ struct ShellRequest {};
 struct ShellResponse {
     int wstatus;
 
-    template <typename Archive>
-    void serialize(Archive &ar) {
-        ar(wstatus);
+    template <typename A>
+    void serialize(A &a) {
+        a(wstatus);
     }
 };
 
