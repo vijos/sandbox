@@ -21,9 +21,6 @@ Sandbox::Sandbox(const Options &options)
     : options_(options), host_stream_(&host_streambuf_) {}
 
 Sandbox::~Sandbox() {
-    if (guest_pid_) {
-        waitpid(guest_pid_, nullptr, 0);
-    }
     if (host_socket_ != -1) {
         close(host_socket_);
     }
@@ -58,7 +55,7 @@ bool Sandbox::init() {
         return false;
     }
     close(guest_socket_);
-    guest_pid_ = pid;
+    // TODO(iceboy): pid became zombie.
     return true;
 }
 
@@ -171,8 +168,8 @@ void Sandbox::guest_init() {
     std::iostream stream(&streambuf);
     cereal::BinaryInputArchive input(stream);
     cereal::BinaryOutputArchive output(stream);
-    while (stream) {
-        try {
+    try {
+        while (stream) {
             ipc::Command command;
             input(command);
             if (command == ipc::Command::shell) {
@@ -182,10 +179,9 @@ void Sandbox::guest_init() {
                 guest_shell(request, response);
                 output(response);
             }
-        } catch (const cereal::Exception &) {
-            break;
+            stream.flush();
         }
-        stream.flush();
+    } catch (const cereal::Exception &e) {
     }
 }
 
