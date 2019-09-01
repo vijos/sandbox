@@ -21,6 +21,9 @@ Sandbox::Sandbox(const Options &options)
     : options_(options), host_stream_(&host_streambuf_) {}
 
 Sandbox::~Sandbox() {
+    if (guest_pid_) {
+        waitpid(guest_pid_, nullptr, 0);
+    }
     if (host_socket_ != -1) {
         close(host_socket_);
     }
@@ -55,7 +58,7 @@ bool Sandbox::init() {
         return false;
     }
     close(guest_socket_);
-    waitpid(pid, nullptr, WNOHANG);
+    guest_pid_ = pid;
     return true;
 }
 
