@@ -44,7 +44,6 @@ private:
         const ipc::ShellRequest &request, ipc::ShellResponse &response);
 
     Options options_;
-    std::string root_dir_;
     int host_socket_ = -1;
     int guest_socket_ = -1;
     FdStreamBuf host_streambuf_;
