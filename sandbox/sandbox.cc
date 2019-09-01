@@ -21,11 +21,6 @@ Sandbox::Sandbox(const Options &options)
     : options_(options), host_stream_(&host_streambuf_) {}
 
 Sandbox::~Sandbox() {
-    // TODO(iceboy): when does nodejs destruct objects?
-    // TODO(iceboy): send terminate signal.
-    if (guest_pid_) {
-        waitpid(guest_pid_, nullptr, 0);
-    }
     if (host_socket_ != -1) {
         close(host_socket_);
     }
@@ -60,7 +55,7 @@ bool Sandbox::init() {
         return false;
     }
     close(guest_socket_);
-    guest_pid_ = pid;
+    waitpid(pid, nullptr, WNOHANG);
     return true;
 }
 

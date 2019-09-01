@@ -47,7 +47,6 @@ private:
     std::string root_dir_;
     int host_socket_ = -1;
     int guest_socket_ = -1;
-    pid_t guest_pid_ = 0;
     FdStreamBuf host_streambuf_;
     std::iostream host_stream_;
 };
