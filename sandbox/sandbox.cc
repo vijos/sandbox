@@ -1,5 +1,6 @@
 #include "sandbox/sandbox.h"
 
+#include <mutex>
 #include <sstream>
 #include <fcntl.h>
 #include <sched.h>
@@ -25,16 +26,42 @@ Sandbox::~Sandbox() {
     if (guest_pid_) {
         waitpid(guest_pid_, nullptr, 0);
     }
-    if (guest_socket_ != -1) {
-        close(guest_socket_);
-    }
     if (host_socket_ != -1) {
         close(host_socket_);
     }
 }
 
 bool Sandbox::init() {
-    return init_sockets() && init_guest();
+    static std::mutex init_mutex;
+    std::lock_guard<std::mutex> lock(init_mutex);
+    static std::vector<int> host_sockets;
+
+    int fds[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds)) {
+        perror("socketpair");
+        return false;
+    }
+    host_socket_ = fds[0];
+    guest_socket_ = fds[1];
+    host_streambuf_.fd(host_socket_);
+    host_sockets.push_back(host_socket_);
+
+    pid_t pid = fork();
+    if (pid == -1) {
+        perror("fork");
+        return false;
+    }
+    if (pid == 0) {
+        for (int host_socket : host_sockets) {
+            close(host_socket);
+        }
+        guest_entry();
+        exit(1);
+        return false;
+    }
+    close(guest_socket_);
+    guest_pid_ = pid;
+    return true;
 }
 
 bool Sandbox::shell(
@@ -50,36 +77,6 @@ bool Sandbox::shell(
     } catch (const cereal::Exception &) {
         return false;
     }
-}
-
-bool Sandbox::init_sockets() {
-    int fds[2];
-    if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds)) {
-        perror("socketpair");
-        return false;
-    }
-    host_socket_ = fds[0];
-    guest_socket_ = fds[1];
-    host_streambuf_.fd(host_socket_);
-    return true;
-}
-
-bool Sandbox::init_guest() {
-    pid_t pid = fork();
-    if (pid == -1) {
-        perror("fork");
-        return false;
-    }
-    // We don't close either host or guest sockets after fork and we don't rely
-    // on the close semantics, as there can be open sockets from other sandbox
-    // instances.
-    if (pid == 0) {
-        guest_entry();
-        exit(1);
-        return false;
-    }
-    guest_pid_ = pid;
-    return true;
 }
 
 void Sandbox::guest_entry() {
