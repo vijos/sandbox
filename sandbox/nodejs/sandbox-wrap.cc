@@ -1,8 +1,19 @@
 #include "sandbox/nodejs/sandbox-wrap.h"
 
+#include <sstream>
+#include <string>
+#include <vector>
+
 namespace sandbox {
 namespace nodejs {
 namespace {
+
+void js_to_native(Napi::Array input, std::vector<std::string> &output) {
+    output.clear();
+    for (uint32_t i = 0; i < input.Length(); ++i) {
+        output.push_back(input.Get(i).ToString().Utf8Value());
+    }
+}
 
 Sandbox::Options get_sandbox_options(const Napi::CallbackInfo &info) {
     Napi::Env env = info.Env();
@@ -72,18 +83,30 @@ public:
         const Napi::CallbackInfo &info,
         Napi::Promise::Deferred deferred)
         : AsyncWorker(info.Env()), wrap_(wrap), deferred_(deferred) {
-        // TODO(iceboy): Populate request_ from info .
+        if (info.Length() >= 1) {
+            request_.path = info[0].ToString().Utf8Value();
+        }
+        if (info.Length() >= 2) {
+            js_to_native(info[1].As<Napi::Array>(), request_.args);
+        }
+        if (info.Length() >= 3) {
+            js_to_native(info[2].As<Napi::Array>(), request_.envs);
+        }
     }
 
     void Execute() override {
-        // TODO(iceboy): Error handling.
-        wrap_.Sandbox::shell(request_, response_);
+        if (!wrap_.Sandbox::shell(request_, response_)) {
+            SetError("shell failed: ipc");
+        }
+        if (response_.error) {
+            std::ostringstream error;
+            error << "shell failed: " << response_.error;
+            SetError(error.str());
+        }
     }
 
     void OnOK() override {
-        // TODO(iceboy): Populate value from response_.
-        printf("response_.wstatus = %d\n", response_.wstatus);
-        deferred_.Resolve(Env().Undefined());
+        deferred_.Resolve(Napi::Number::From(Env(), response_.result));
     }
 
     void OnError(const Napi::Error &e) override {

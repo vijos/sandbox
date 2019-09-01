@@ -129,6 +129,7 @@ void Sandbox::guest_entry() {
 
 void Sandbox::guest_init() {
     // TODO(iceboy): Error handling.
+    // TODO(iceboy): Handle zombies.
     mount("root", options_.temp_dir.c_str(), "tmpfs", MS_NOSUID, nullptr);
     chdir(options_.temp_dir.c_str());
     mkdir("proc", 0755);
@@ -192,19 +193,37 @@ void Sandbox::guest_shell(
     const ipc::ShellRequest &request, ipc::ShellResponse &response) {
     pid_t pid = fork();
     if (pid == -1) {
-        perror("fork");
+        response.error = errno;
         return;
     }
     if (pid == 0) {
         fcntl(0, F_SETFD, fcntl(0, F_GETFD) & ~FD_CLOEXEC);
         fcntl(1, F_SETFD, fcntl(1, F_GETFD) & ~FD_CLOEXEC);
         fcntl(2, F_SETFD, fcntl(2, F_GETFD) & ~FD_CLOEXEC);
-        execl("/bin/bash", "shell", nullptr);
+        std::vector<const char *> argv;
+        for (const std::string &arg : request.args) {
+            argv.push_back(arg.c_str());
+        }
+        argv.push_back(nullptr);
+        std::vector<const char *> envp;
+        for (const std::string &env : request.envs) {
+            envp.push_back(env.c_str());
+        }
+        envp.push_back(nullptr);
+        exit(execve(request.path.c_str(),
+                    const_cast<char **>(argv.data()),
+                    const_cast<char **>(envp.data())));
         return;
     }
-    if (waitpid(pid, &response.wstatus, 0) == -1) {
-        perror("waitpid");
+    int wstatus;
+    if (waitpid(pid, &wstatus, 0) == -1) {
+        response.error = errno;
         return;
+    }
+    if (WIFSIGNALED(wstatus)) {
+        response.result = -WTERMSIG(wstatus);
+    } else {
+        response.result = WEXITSTATUS(wstatus);
     }
 }
 
