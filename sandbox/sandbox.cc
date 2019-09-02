@@ -24,6 +24,9 @@ Sandbox::~Sandbox() {
     if (host_socket_ != -1) {
         close(host_socket_);
     }
+    if (host_cgroup_socket_ != -1) {
+        close(host_cgroup_socket_);
+    }
 }
 
 bool Sandbox::init() {
@@ -40,7 +43,19 @@ bool Sandbox::init() {
     guest_socket_ = fds[1];
     host_streambuf_.fd(host_socket_);
     host_sockets.push_back(host_socket_);
-
+    if (socketpair(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0, fds)) {
+        perror("socketpair");
+        return false;
+    }
+    host_cgroup_socket_ = fds[0];
+    guest_cgroup_socket_ = fds[1];
+    host_sockets.push_back(host_cgroup_socket_);
+    int optval = 1;
+    if (setsockopt(host_cgroup_socket_, SOL_SOCKET, SO_PASSCRED,
+                   &optval, sizeof(optval))) {
+        perror("setsockopt");
+        return false;
+    }
     pid_t pid = fork();
     if (pid == -1) {
         perror("fork");
@@ -55,6 +70,7 @@ bool Sandbox::init() {
         return false;
     }
     close(guest_socket_);
+    close(guest_cgroup_socket_);
     // TODO(iceboy): pid became zombie.
     return true;
 }
@@ -66,6 +82,9 @@ bool Sandbox::shell(
         output(ipc::Command::shell);
         output(request);
         host_stream_.flush();
+        if (!host_cgroup_sync()) {
+            return false;
+        }
         cereal::BinaryInputArchive input(host_stream_);
         input(response);
         return true;
@@ -206,6 +225,7 @@ void Sandbox::guest_shell(
             envp.push_back(env.c_str());
         }
         envp.push_back(nullptr);
+        guest_cgroup_sync();
         exit(execve(request.path.c_str(),
                     const_cast<char **>(argv.data()),
                     const_cast<char **>(envp.data())));
@@ -220,6 +240,55 @@ void Sandbox::guest_shell(
         response.result = -WTERMSIG(wstatus);
     } else {
         response.result = WEXITSTATUS(wstatus);
+    }
+}
+
+bool Sandbox::host_cgroup_sync() {
+    char buffer = 0;
+    iovec iov;
+    iov.iov_base = &buffer;
+    iov.iov_len = 1;
+    char control[CMSG_SPACE(sizeof(ucred))];
+    msghdr msgh;
+    msgh.msg_name = nullptr;
+    msgh.msg_namelen = 0;
+    msgh.msg_iov = &iov;
+    msgh.msg_iovlen = 1;
+    msgh.msg_control = control;
+    msgh.msg_controllen = sizeof(control);
+    if (recvmsg(host_cgroup_socket_, &msgh, 0) < 0) {
+        perror("recvmsg");
+        return false;
+    }
+    cmsghdr *cmsgp = CMSG_FIRSTHDR(&msgh);
+    if (!cmsgp ||
+        cmsgp->cmsg_len != CMSG_LEN(sizeof(ucred)) ||
+        cmsgp->cmsg_level != SOL_SOCKET ||
+        cmsgp->cmsg_type != SCM_CREDENTIALS) {
+        std::cerr << "invalid cmsg" << std::endl;
+        return false;
+    }
+    ucred *ucredp = reinterpret_cast<ucred *>(CMSG_DATA(cmsgp));
+    // TODO(iceboy): Add to cgroup.
+    printf("guest pid = %d\n", ucredp->pid);
+    if (send(host_cgroup_socket_, &buffer, 1, 0) < 0) {
+        perror("send");
+        return false;
+    }
+    return true;
+}
+
+void Sandbox::guest_cgroup_sync() {
+    char buffer = 0;
+    if (send(guest_cgroup_socket_, &buffer, 1, 0) < 0) {
+        int err = errno;
+        perror("send");
+        exit(err);
+    }
+    if (recv(guest_cgroup_socket_, &buffer, 1, 0) < 0) {
+        int err = errno;
+        perror("recv");
+        exit(err);
     }
 }
 

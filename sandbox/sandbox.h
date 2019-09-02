@@ -43,11 +43,16 @@ private:
     void guest_shell(
         const ipc::ShellRequest &request, ipc::ShellResponse &response);
 
+    bool host_cgroup_sync();
+    void guest_cgroup_sync();
+
     Options options_;
     int host_socket_ = -1;
     int guest_socket_ = -1;
     FdStreamBuf host_streambuf_;
     std::iostream host_stream_;
+    int host_cgroup_socket_ = -1;
+    int guest_cgroup_socket_ = -1;
 };
 
 }  // namespace sandbox
