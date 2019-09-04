@@ -1,5 +1,5 @@
 {
-    "name": "sandbox",
+    "name": "jd5-sandbox",
     "version": "0.0.0",
     "main": "build/Release/sandbox.node",
     "dependencies": {
