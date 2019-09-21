@@ -2,6 +2,7 @@
 
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace sandbox {
@@ -62,7 +63,7 @@ Sandbox::Options get_sandbox_options(const Napi::CallbackInfo &info) {
 
 void SandboxWrap::init(Napi::Env env, Napi::Object exports) {
     Napi::Function func = DefineClass(env, "Sandbox", {
-        InstanceMethod("shell", &SandboxWrap::shell),
+        InstanceMethod("execute", &SandboxWrap::execute),
     });
     exports.Set("Sandbox", func);
 }
@@ -76,54 +77,86 @@ SandboxWrap::SandboxWrap(const Napi::CallbackInfo &info)
     }
 }
 
-class SandboxWrap::ShellWorker : public Napi::AsyncWorker {
+class SandboxWrap::ExecuteWorker : public Napi::AsyncWorker {
 public:
-    explicit ShellWorker(
+    explicit ExecuteWorker(
         SandboxWrap &wrap,
         const Napi::CallbackInfo &info,
-        Napi::Promise::Deferred deferred)
-        : AsyncWorker(info.Env()), wrap_(wrap), deferred_(deferred) {
-        if (info.Length() >= 1) {
-            request_.path = info[0].ToString().Utf8Value();
-        }
-        if (info.Length() >= 2) {
-            js_to_native(info[1].As<Napi::Array>(), request_.args);
-        }
-        if (info.Length() >= 3) {
-            js_to_native(info[2].As<Napi::Array>(), request_.envs);
-        }
-    }
+        Napi::Promise::Deferred deferred);
 
-    void Execute() override {
-        if (!wrap_.Sandbox::shell(request_, response_)) {
-            SetError("shell failed: ipc");
-        }
-        if (response_.error) {
-            std::ostringstream error;
-            error << "shell failed: " << response_.error;
-            SetError(error.str());
-        }
-    }
-
-    void OnOK() override {
-        deferred_.Resolve(Napi::Number::From(Env(), response_.result));
-    }
-
-    void OnError(const Napi::Error &e) override {
-        deferred_.Reject(e.Value());
-    }
+    void Execute() override;
+    void OnOK() override;
+    void OnError(const Napi::Error &e) override;
 
 private:
+    void populate_files(Napi::Object files);
+
     SandboxWrap &wrap_;
     Napi::Promise::Deferred deferred_;
-    ipc::ShellRequest request_;
-    ipc::ShellResponse response_;
+    ipc::ExecuteRequest request_;
+    ipc::ExecuteResponse response_;
 };
 
-Napi::Value SandboxWrap::shell(const Napi::CallbackInfo &info) {
+Napi::Value SandboxWrap::execute(const Napi::CallbackInfo &info) {
     Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(info.Env());
-    (new ShellWorker(*this, info, deferred))->Queue();
+    (new ExecuteWorker(*this, info, deferred))->Queue();
     return deferred.Promise();
+}
+
+SandboxWrap::ExecuteWorker::ExecuteWorker(
+    SandboxWrap &wrap,
+    const Napi::CallbackInfo &info,
+    Napi::Promise::Deferred deferred)
+    : AsyncWorker(info.Env()), wrap_(wrap), deferred_(deferred) {
+    Napi::Object params = info[0].ToObject();
+    if (params.Has("path")) {
+        request_.path = params.Get("path").ToString().Utf8Value();
+    }
+    if (params.Has("args")) {
+        js_to_native(params.Get("args").As<Napi::Array>(), request_.args);
+    }
+    if (params.Has("envs")) {
+        js_to_native(params.Get("envs").As<Napi::Array>(), request_.envs);
+    }
+    if (params.Has("files")) {
+        populate_files(params.Get("files").ToObject());
+    }
+}
+
+void SandboxWrap::ExecuteWorker::Execute() {
+    if (!wrap_.Sandbox::execute(request_, response_)) {
+        SetError("execute failed: ipc");
+    }
+    if (response_.error) {
+        std::ostringstream error;
+        error << "execute failed: " << response_.error;
+        SetError(error.str());
+    }
+}
+
+void SandboxWrap::ExecuteWorker::OnOK() {
+    deferred_.Resolve(Napi::Number::From(Env(), response_.result));
+}
+
+void SandboxWrap::ExecuteWorker::OnError(const Napi::Error &e) {
+    deferred_.Reject(e.Value());
+}
+
+void SandboxWrap::ExecuteWorker::populate_files(Napi::Object files) {
+    Napi::Array names = files.GetPropertyNames();
+    for (uint32_t i = 0; i < names.Length(); ++i) {
+        Napi::Value name = names.Get(i);
+        if (!name.IsNumber()) {
+            continue;
+        }
+        Napi::Object value = files.Get(name).ToObject();
+        ipc::FileInfo file;
+        file.fd = static_cast<int>(name.ToNumber().Int32Value());
+        file.inherit = value.Get("inherit").ToBoolean().Value();
+        file.readonly = value.Get("readonly").ToBoolean().Value();
+        file.path = value.Get("path").ToString().Utf8Value();
+        request_.files.push_back(std::move(file));
+    }
 }
 
 }  // namespace nodejs

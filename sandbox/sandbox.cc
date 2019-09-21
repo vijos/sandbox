@@ -75,11 +75,11 @@ bool Sandbox::init() {
     return true;
 }
 
-bool Sandbox::shell(
-    const ipc::ShellRequest &request, ipc::ShellResponse &response) {
+bool Sandbox::execute(
+    const ipc::ExecuteRequest &request, ipc::ExecuteResponse &response) {
     try {
         cereal::BinaryOutputArchive output(host_stream_);
-        output(ipc::Command::shell);
+        output(ipc::Command::execute);
         output(request);
         host_stream_.flush();
         if (!host_cgroup_sync()) {
@@ -191,11 +191,11 @@ void Sandbox::guest_init() {
         while (stream) {
             ipc::Command command;
             input(command);
-            if (command == ipc::Command::shell) {
-                ipc::ShellRequest request;
+            if (command == ipc::Command::execute) {
+                ipc::ExecuteRequest request;
                 input(request);
-                ipc::ShellResponse response;
-                guest_shell(request, response);
+                ipc::ExecuteResponse response;
+                guest_execute(request, response);
                 output(response);
             }
             stream.flush();
@@ -204,31 +204,15 @@ void Sandbox::guest_init() {
     }
 }
 
-void Sandbox::guest_shell(
-    const ipc::ShellRequest &request, ipc::ShellResponse &response) {
+void Sandbox::guest_execute(
+    const ipc::ExecuteRequest &request, ipc::ExecuteResponse &response) {
     pid_t pid = fork();
     if (pid == -1) {
         response.error = errno;
         return;
     }
     if (pid == 0) {
-        fcntl(0, F_SETFD, fcntl(0, F_GETFD) & ~FD_CLOEXEC);
-        fcntl(1, F_SETFD, fcntl(1, F_GETFD) & ~FD_CLOEXEC);
-        fcntl(2, F_SETFD, fcntl(2, F_GETFD) & ~FD_CLOEXEC);
-        std::vector<const char *> argv;
-        for (const std::string &arg : request.args) {
-            argv.push_back(arg.c_str());
-        }
-        argv.push_back(nullptr);
-        std::vector<const char *> envp;
-        for (const std::string &env : request.envs) {
-            envp.push_back(env.c_str());
-        }
-        envp.push_back(nullptr);
-        guest_cgroup_sync();
-        exit(execve(request.path.c_str(),
-                    const_cast<char **>(argv.data()),
-                    const_cast<char **>(envp.data())));
+        guest_execute_child(request);
         return;
     }
     int wstatus;
@@ -241,6 +225,41 @@ void Sandbox::guest_shell(
     } else {
         response.result = WEXITSTATUS(wstatus);
     }
+}
+
+void Sandbox::guest_execute_child(const ipc::ExecuteRequest &request) {
+    for (const ipc::FileInfo &file : request.files) {
+        if (file.inherit) {
+            int flags = fcntl(file.fd, F_GETFD);
+            if (flags == -1) {
+                continue;
+            }
+            fcntl(file.fd, F_SETFD, flags & ~FD_CLOEXEC);
+        } else {
+            int fd = open(file.path.c_str(),
+                          file.readonly ? O_RDONLY : O_RDWR | O_CREAT,
+                          0644);
+            if (fd == -1) {
+                continue;
+            }
+            dup2(fd, file.fd);
+            close(fd);
+        }
+    }
+    std::vector<const char *> argv;
+    for (const std::string &arg : request.args) {
+        argv.push_back(arg.c_str());
+    }
+    argv.push_back(nullptr);
+    std::vector<const char *> envp;
+    for (const std::string &env : request.envs) {
+        envp.push_back(env.c_str());
+    }
+    envp.push_back(nullptr);
+    guest_cgroup_sync();
+    exit(execve(request.path.c_str(),
+                const_cast<char **>(argv.data()),
+                const_cast<char **>(envp.data())));
 }
 
 bool Sandbox::host_cgroup_sync() {

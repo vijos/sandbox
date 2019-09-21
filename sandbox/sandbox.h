@@ -34,14 +34,15 @@ public:
     Sandbox &operator=(const Sandbox &) = delete;
 
     bool init();
-    bool shell(
-        const ipc::ShellRequest &request, ipc::ShellResponse &response);
+    bool execute(
+        const ipc::ExecuteRequest &request, ipc::ExecuteResponse &response);
 
 private:
     void guest_entry();
     void guest_init();
-    void guest_shell(
-        const ipc::ShellRequest &request, ipc::ShellResponse &response);
+    void guest_execute(
+        const ipc::ExecuteRequest &request, ipc::ExecuteResponse &response);
+    void guest_execute_child(const ipc::ExecuteRequest &request);
 
     bool host_cgroup_sync();
     void guest_cgroup_sync();

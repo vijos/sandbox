@@ -8,21 +8,34 @@ namespace sandbox {
 namespace ipc {
 
 enum class Command {
-    shell,
+    execute,
 };
 
-struct ShellRequest {
+struct FileInfo {
+    int fd = 0;
+    bool inherit = false;
+    bool readonly = false;
     std::string path;
-    std::vector<std::string> args;
-    std::vector<std::string> envs;
 
     template <typename A>
     void serialize(A &a) {
-        a(path, args, envs);
+        a(fd, inherit, readonly, path);
     }
 };
 
-struct ShellResponse {
+struct ExecuteRequest {
+    std::string path;
+    std::vector<std::string> args;
+    std::vector<std::string> envs;
+    std::vector<FileInfo> files;
+
+    template <typename A>
+    void serialize(A &a) {
+        a(path, args, envs, files);
+    }
+};
+
+struct ExecuteResponse {
     int error = 0;
     int result = 0;
 
