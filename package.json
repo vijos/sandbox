@@ -3,7 +3,6 @@
     "version": "0.0.0",
     "main": "build/Release/sandbox.node",
     "dependencies": {
-        "cereal": "https://github.com/USCiLab/cereal.git",
         "node-addon-api": "^1.7.1"
     },
     "gypfile": true
